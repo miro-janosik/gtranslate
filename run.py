@@ -1,16 +1,20 @@
 import os
-import googletrans
-from googletrans import Translator
+#from googletrans import Translator
+from google.cloud import translate
+import html
 
-translator = Translator()
+project_id = "my-translate-50019"
+assert project_id
+parent = f"projects/{project_id}"
+client = translate.TranslationServiceClient()
 
 languages = { 
 	"arabic" : "ar", 
 	"czech" : "cs", 
-	"croatian" : "cr", 
+	"croatian" : "hr", 
 	"english" : "en", 
 	"german" : "de", 
-	"greek" : "gr", 
+	"greek" : "el", 
 	"farsi" : "fa", 
 	"french" : "fr", 
 	"polish" : "pl", 
@@ -24,7 +28,7 @@ languages = {
 
 def walkFolder(folder : str):
 	# for root, dirs, files in os.walk(folder):
-	files = os.listdir()
+	files = os.listdir(folder)
 	foundFiles = []
 	
 	# get the .lab files from the local folder
@@ -34,13 +38,22 @@ def walkFolder(folder : str):
 	
 	return foundFiles
 
-def remoteTranslation( lang : str, textToTranslate : str ) -> str :
+def remoteTranslation( lang : str, textToTranslate : list ) -> str :
 	if lang == "en":
 		return textToTranslate
 	
-	result = translator.translate(textToTranslate, src=lang)
+	response = client.translate_text(
+		contents=textToTranslate,
+		source_language_code=lang,
+		target_language_code="en",
+		parent=parent
+	)
 	
-	return result.text
+	r = []
+	for translation in response.translations:
+		# to avoid html encoding
+		r.append(html.unescape(translation.translated_text))
+	return r
 
 errors = []
 
@@ -73,7 +86,7 @@ def translateFile( inFileName : str, outFileName : str ):
 				lines.append(line)
 				continue
 			
-			i = items.split(':')
+			i = items[2].split(':')
 			if len(i) != 4:
 				errors.append(f"line {lineNumber} does not have 3 items")
 				lines.append(line)
@@ -84,6 +97,7 @@ def translateFile( inFileName : str, outFileName : str ):
 			line.append( f"{i[0]}:{i[1]}" )
 			line.append( i[2] )
 			line.append( i[3] )
+			lines.append(line)
 			
 			lang = i[2]
 			if lang in languages:
@@ -100,23 +114,22 @@ def translateFile( inFileName : str, outFileName : str ):
 				l = langs.get( lang )
 			
 			l.append( ( lineNumber, text ) )
-			
+
 			langs[ lang ] = l
 	
 	numLangs = len(langs)
-	printf(f"Going to translate {numLangs} languages.")
+	print(f"Going to translate {numLangs} languages.")
 	
 	langKeys = langs.keys()
 	for lang in langKeys:
 		texts = langs[ lang ]
-		textToTranslate = ""
+		textToTranslate = []
 		for textItems in texts:
-			textToTranslate += textItems[1] + "\n"
+			textToTranslate.append(textItems[1])
 		
 		# call the translator
-		translatedText = remoteTranslation(lang, textToTranslate)
+		translatedLines = remoteTranslation(lang, textToTranslate)
 		
-		translatedLines = translatedText.split('\n')
 		if len(translatedLines) != len(texts):
 			errors.append( f"Translated output has {len(translatedLines)} instead of {len(texts)} for lang {lang}")
 			continue
@@ -138,14 +151,14 @@ def translateFile( inFileName : str, outFileName : str ):
 				errors.append(f"line {lineIndex} is read properly")
 				continue
 			
-			lang = "english"
+			# it was not translated, for some reason, then keep original
+			lang = l[3]
 			text = l[4]
 			if len(l) == 6:
-				# it was not translated, for some reason
-				lang = l[3]
+				lang = "english"
 				text = l[5]
 			
-			lab.write(f"{l[0]}\t{l[1]}\t{l[2]}:{lang}:{text}")
+			lab.write(f"{l[0]}\t{l[1]}\t{l[2]}:{lang}:{text}\n")
 	
 
 def translateFolder( inFolder : str, outFolder : str, fileNames : list ):
@@ -168,5 +181,7 @@ def translateFolder( inFolder : str, outFolder : str, fileNames : list ):
 
 
 fileNames = walkFolder("./in")
-
 translateFolder("./in", "./out", fileNames)
+
+#t = remoteTranslation("de", ["Hallo, wo bist du?", "Ich warte hier", "Kurtze zeit"])
+#print (t)
