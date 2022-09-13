@@ -107,6 +107,10 @@ def translateFile( inFileName : str, outFileName : str ):
 				continue
 			
 			text = i[3]
+			textTest = text.strip().strip('*').strip('-').strip()
+			if not textTest:
+				# empty string
+				continue
 			
 			# update the language request with new request text line
 			l = []
